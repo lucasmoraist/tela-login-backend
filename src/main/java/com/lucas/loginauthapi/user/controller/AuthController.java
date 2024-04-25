@@ -1,5 +1,8 @@
 package com.lucas.loginauthapi.user.controller;
 
+import com.lucas.loginauthapi.exceptions.DuplicateException;
+import com.lucas.loginauthapi.exceptions.EmailNotFound;
+import com.lucas.loginauthapi.exceptions.PasswordException;
 import com.lucas.loginauthapi.infra.security.TokenService;
 import com.lucas.loginauthapi.user.domain.User;
 import com.lucas.loginauthapi.user.dto.LoginRequestDTO;
@@ -27,30 +30,29 @@ public class AuthController {
     private final TokenService tokenService;
 
     @PostMapping("login")
-    public ResponseEntity<ResponseDTO> login(@RequestBody LoginRequestDTO dto){
-        User user = this.repository.findByEmail(dto.email()).orElseThrow(() -> new RuntimeException("User not found"));
-        if(passwordEncoder.matches(dto.password(), user.getPassword())){
-            String token = this.tokenService.generateToken(user);
-            return ResponseEntity.ok(new ResponseDTO(user.getEmail(), token));
-        }
-        return ResponseEntity.badRequest().build();
+    public ResponseEntity<ResponseDTO> login(@RequestBody LoginRequestDTO dto) {
+        User user = this.repository.findByEmail(dto.email()).orElseThrow(() -> new EmailNotFound("Email incorreto"));
+
+        if (!passwordEncoder.matches(dto.password(), user.getPassword())) { throw new PasswordException(); }
+
+        String token = this.tokenService.generateToken(user);
+        return ResponseEntity.ok(new ResponseDTO(user.getEmail(), token));
     }
 
     @PostMapping("register")
-    public ResponseEntity<ResponseDTO> register(@RequestBody RegisterRequestDTO dto){
+    public ResponseEntity<ResponseDTO> register(@RequestBody RegisterRequestDTO dto) {
         Optional<User> optionalUser = this.repository.findByEmail(dto.email());
-        if(optionalUser.isEmpty()){
-            User newUser = new User().builder()
-                    .name(dto.name())
-                    .email(dto.email())
-                    .password(passwordEncoder.encode(dto.password()))
-                    .build();
-            this.repository.save(newUser);
+        
+        if (optionalUser.isPresent()) { throw new DuplicateException(); }
 
-            String token = this.tokenService.generateToken(newUser);
-            return ResponseEntity.ok(new ResponseDTO(newUser.getEmail(), token));
-        }
-        return ResponseEntity.badRequest().build();
+        User newUser = User.builder()
+                .name(dto.name())
+                .email(dto.email())
+                .password(passwordEncoder.encode(dto.password()))
+                .build();
+        this.repository.save(newUser);
+
+        String token = this.tokenService.generateToken(newUser);
+        return ResponseEntity.ok(new ResponseDTO(newUser.getEmail(), token));
     }
-
 }
